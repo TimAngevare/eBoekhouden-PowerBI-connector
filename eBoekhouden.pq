@@ -129,6 +129,70 @@ shared eBoekhouden.getLedgers = () =>
     in
         filtered;
 
+eBoekhouden.lastMonths = () =>
+    let
+        StartMonth = Date.StartOfMonth(Date.AddMonths(Date.From(DateTime.LocalNow()), -23)),
+        Months = List.Generate(
+            ()=> StartMonth,
+            each _ <= Date.From(DateTime.LocalNow()),
+            each Date.AddMonths(_, 1)
+        ),
+        MonthPairs = Table.FromRecords(List.Transform(Months, each [Start =Date.ToText(_,"yyyy-MM-dd") , End = Date.ToText(Date.AddDays(Date.AddMonths(_, 1), -1), "yyyy-MM-dd")]))
+    in
+        MonthPairs;
+
+shared eBoekhouden.GetLedgerBalance = (id as text, startDate as text, endDate as text) =>
+    let
+        raw = eBoekhouden.retrieveItems("/v1/ledger/" & id & "/balance", startDate, endDate),
+        response = Json.Document(raw)
+    in
+        response;
+
+shared eBoekhouden.getLedgerBalances = () =>
+    let
+        LedgerIDs = Table.Column(eBoekhouden.getLedgers(), "id"),
+        LastMonths = eBoekhouden.lastMonths(),
+        Combined = List.Combine(
+            List.Transform(LedgerIDs, each 
+                let
+                    ledger = _,
+                    calls = List.Transform(LastMonths, each
+                        [
+                            id = ledger,
+                            startDate = Text.From(_[Start]),
+                            endDate = Text.From(_[End])
+                        ])
+                in
+                    calls
+            )
+        ),
+
+        RawResults = List.Transform(Combined, each 
+            let 
+                r = _,
+                result = try eBoekhouden.GetLedgerBalance(Text.From(r[id]), Text.From(r[startDate]), Text.From(r[endDate])) otherwise null
+            in
+                if result <> null and Record.FieldCount(result) > 0 then
+                    Record.Combine({r, result})
+                else
+                    null
+        ),
+
+        Clean = List.RemoveNulls(RawResults),
+        TableOut = Table.FromRecords(Clean),
+
+        #"Changed Type" = Table.TransformColumnTypes(TableOut,{
+            {"startDate", type date},
+            {"endDate", type date},
+            {"id", Int64.Type},
+            {"code", Int64.Type},
+            {"balance", Currency.Type}
+        })
+    in
+        #"Changed Type";
+
+
+
 shared eBoekhouden.getOutstandingInvoicesCreditor = () =>
     let
         raw      = Json.Document(eBoekhouden.AuthRequest("/v1/mutation/invoice/outstanding?credDeb=c")),
@@ -155,11 +219,26 @@ shared eBoekhouden.getOutstandingInvoicesDebtor = () =>
 
 shared eBoekhouden.getAdministration = () =>
     let
-        raw = Json.Document(eBoekhouden.AuthRequest("/v1/administration")),
-        records  = raw[items],
-        table    = Table.FromRecords(records)
+        result = Json.Document(eBoekhouden.AuthRequest("/v1/administration")),
+        output =
+            if result[HasError] then
+                let
+                    err = result[Error],
+                    msg = if Record.HasFields(err, {"status", "code"}) and err[code] = "EP_001" then
+                            error "Deze endpoint is alleen beschikbaar voor accountants. Neem contact op met e-Boekhouden als je denkt dat dit een fout is."
+                          else
+                            error Text.From(err)
+                in
+                    msg
+            else
+                let
+                    records = result[Value][items],
+                    table   = Table.FromRecords(records)
+                in
+                    table
     in
-        table;
+        output;
+        
 
 shared eBoekhouden.getInvoiceTemplate = () =>
     let
