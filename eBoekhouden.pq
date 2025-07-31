@@ -11,12 +11,15 @@ shared eBoekhouden.Contents = () =>
                 {"Invoices",          eBoekhouden.getInvoices,           "Function"},
                 {"Mutations",         eBoekhouden.getMutations,          "Function"},
                 {"Invoice by ID",         eBoekhouden.getInvoice,          "Function"},
-                {"Ledgers",           eBoekhouden.getLedgers(),            "Table"},
-                {"Outstanding Invoices Creditors", eBoekhouden.getOutstandingInvoicesCreditor(), "Table"},
-                {"Outstanding Invoices Debtors", eBoekhouden.getOutstandingInvoicesDebtor(), "Table"},
-                {"Authorized administrations", eBoekhouden.getAdministration(), "Table"},
-                {"Products", eBoekhouden.getProduct(), "Table"},
-                {"Invoice templates", eBoekhouden.getInvoiceTemplate(), "Table"}
+                {"Ledgers",           eBoekhouden.getLedgers,            "Function"},
+                {"Relations",         eBoekhouden.getRelation,           "Function"},
+                {"Products",          eBoekhouden.getProduct,            "Function"},
+                {"Invoice templates", eBoekhouden.getInvoiceTemplate,    "Function"},
+                {"Outstanding Invoices creditor", eBoekhouden.getOutstandingInvoicesCreditor, "Function"},
+                {"Outstanding Invoices debtor", eBoekhouden.getOutstandingInvoicesDebtor, "Function"},
+                {"Administration",    eBoekhouden.getAdministration,     "Function"},
+                {"Ledger balance", eBoekhouden.GetLedgerBalance, "Function"},
+                {"Balances of all ledgers over the past 2 years", eBoekhouden.getLedgerBalances, "Function"}
             }
         ),
         navigation = Table.ToNavigationTable(
@@ -35,32 +38,25 @@ shared eBoekhouden.getSession = () =>
     let
         url = "https://api.e-boekhouden.nl/v1/session",
         apiKey = try Extension.CurrentCredential()[Key] otherwise error "No API key provided",
-        body = Json.FromValue([
-            accessToken = apiKey,
-            source = "powerBI"
-        ]),
+        jsonBody = Json.FromValue([ accessToken = apiKey, source = "powerBI" ]),
         options = [
             Headers = [
                 #"Content-Type" = "application/json",
                 #"Accept" = "application/json"
-                ],
-            Content = body
+            ],
+            Content = jsonBody,
+            ManualCredentials = true,
+            ManualStatusHandling = {400, 401, 403, 500}
         ],
-        response = Json.Document(Web.Contents(url, options)),
-        token = try response[token] otherwise error "Authentication failed: no token received"
+        rawResponse = Web.Contents(url, options),
+        status = Value.Metadata(rawResponse)[Response.Status],
+        bodyText = Text.FromBinary(rawResponse),
+        parsed = if status < 300
+                 then Json.Document(rawResponse)
+                 else error "Auth failed (HTTP " & Text.From(status) & "): " & bodyText,
+        token = try parsed[token] otherwise error "No token in response: " & bodyText
     in
         token;
-
-// Data Source Kind description
- eBoekhouden = [
-    TestConnection = (dataSourcePath) => { "eBoekhouden.Contents" },
-    Authentication = [
-        Key = [ Label = "e-Boekhouden API key", KeyLabel = "Plak je API key" ]
-    ],
-    Label = "e-Boekhouden (API)"
-];
-
-
 
 // Centralized authenticated request
  eBoekhouden.AuthRequest = (relativePath as text, optional query as nullable record) =>
@@ -72,7 +68,8 @@ shared eBoekhouden.getSession = () =>
                 #"Content-Type"  = "application/json",
                 #"Authorization" = token
             ],
-            Query   = query
+            Query   = query,
+            ManualCredentials = true
         ],
         result = Web.Contents(url, options)
     in
@@ -150,27 +147,25 @@ shared eBoekhouden.GetLedgerBalance = (id as text, startDate as text, endDate as
 
 shared eBoekhouden.getLedgerBalances = () =>
     let
-        LedgerIDs = Table.Column(eBoekhouden.getLedgers(), "id"),
-        LastMonths = eBoekhouden.lastMonths(),
+        LedgerIDs = eBoekhouden.getLedgers()[id],
+        MonthPairs = Table.ToRecords(eBoekhouden.lastMonths()),
+
         Combined = List.Combine(
-            List.Transform(LedgerIDs, each 
-                let
-                    ledger = _,
-                    calls = List.Transform(LastMonths, each
-                        [
-                            id = ledger,
-                            startDate = Text.From(_[Start]),
-                            endDate = Text.From(_[End])
-                        ])
-                in
-                    calls
+            List.Transform(LedgerIDs, (ledger) =>
+                List.Transform(MonthPairs, (pair) =>
+                    [
+                        id = ledger,
+                        startDate = pair[Start],
+                        endDate = pair[End]
+                    ]
+                )
             )
         ),
 
         RawResults = List.Transform(Combined, each 
             let 
                 r = _,
-                result = try eBoekhouden.GetLedgerBalance(Text.From(r[id]), Text.From(r[startDate]), Text.From(r[endDate])) otherwise null
+                result = try eBoekhouden.GetLedgerBalance(Text.From(r[id]), r[startDate], r[endDate]) otherwise null
             in
                 if result <> null and Record.FieldCount(result) > 0 then
                     Record.Combine({r, result})
@@ -190,8 +185,6 @@ shared eBoekhouden.getLedgerBalances = () =>
         })
     in
         #"Changed Type";
-
-
 
 shared eBoekhouden.getOutstandingInvoicesCreditor = () =>
     let
@@ -270,6 +263,15 @@ shared eBoekhouden.testTable = () =>
         result = #table({"Token"}, {{token}})
     in
         result;
+
+// Data Source Kind description
+ eBoekhouden = [
+    TestConnection = (dataSourcePath) => { "eBoekhouden.getSession" },
+    Authentication = [
+        Key = [ Label = "e-Boekhouden API key", KeyLabel = "Plak je API key" ]
+    ],
+    Label = "e-Boekhouden (API)"
+];
 
 // Data Source UI publishing description
  eBoekhouden.Publish = [
