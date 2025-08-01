@@ -12,14 +12,16 @@ shared eBoekhouden.Contents = () =>
                 {"Mutations",         eBoekhouden.getMutations,          "Function"},
                 {"Invoice by ID",         eBoekhouden.getInvoice,          "Function"},
                 {"Ledgers",           eBoekhouden.getLedgers,            "Function"},
-                {"Relations",         eBoekhouden.getRelation,           "Function"},
-                {"Products",          eBoekhouden.getProduct,            "Function"},
+                {"Relations",         eBoekhouden.getRelations,           "Function"},
+                {"Relation",         eBoekhouden.getRelation,           "Function"},
+                {"Products",          eBoekhouden.getProducts,            "Function"},
+                {"Product",          eBoekhouden.getProduct,            "Function"},
                 {"Invoice templates", eBoekhouden.getInvoiceTemplate,    "Function"},
                 {"Outstanding Invoices creditor", eBoekhouden.getOutstandingInvoicesCreditor, "Function"},
                 {"Outstanding Invoices debtor", eBoekhouden.getOutstandingInvoicesDebtor, "Function"},
                 {"Administration",    eBoekhouden.getAdministration,     "Function"},
                 {"Ledger balance", eBoekhouden.GetLedgerBalance, "Function"},
-                {"Balances of all ledgers over the past 2 years", eBoekhouden.getLedgerBalances, "Function"}
+                {"Balances of all ledgers over the past 3 years", eBoekhouden.getLedgerBalances, "Function"}
             }
         ),
         navigation = Table.ToNavigationTable(
@@ -140,7 +142,7 @@ eBoekhouden.lastMonths = () =>
 
 shared eBoekhouden.GetLedgerBalance = (id as text, startDate as text, endDate as text) =>
     let
-        raw = eBoekhouden.retrieveItems("/v1/ledger/" & id & "/balance", startDate, endDate),
+        raw = eBoekhouden.AuthRequest("/v1/ledger/" & id & "/balance?from=" & startDate & "&to=" & endDate),
         response = Json.Document(raw)
     in
         response;
@@ -241,7 +243,7 @@ shared eBoekhouden.getInvoiceTemplate = () =>
     in
         table;
 
-shared eBoekhouden.getRelation = () =>
+shared eBoekhouden.getRelations = () =>
     let
         raw = Json.Document(eBoekhouden.AuthRequest("/v1/relation")),
         records  = raw[items],
@@ -249,9 +251,25 @@ shared eBoekhouden.getRelation = () =>
     in
         table;
 
-shared eBoekhouden.getProduct = () =>
+shared eBoekhouden.getRelation = (id as number) =>
+    let
+        raw = Json.Document(eBoekhouden.AuthRequest("/v1/relation/" & Text.From(id))),
+        records  = raw[items],
+        table    = Table.FromRecords(records)
+    in
+        table;
+
+shared eBoekhouden.getProducts = () =>
     let
         raw = Json.Document(eBoekhouden.AuthRequest("/v1/product")),
+        records  = raw[items],
+        table    = Table.FromRecords(records)
+    in
+        table;
+
+shared eBoekhouden.getProduct = (id as number) =>
+    let
+        raw = Json.Document(eBoekhouden.AuthRequest("/v1/product/" & Text.From(id))),
         records  = raw[items],
         table    = Table.FromRecords(records)
     in
@@ -270,15 +288,15 @@ shared eBoekhouden.testTable = () =>
     Authentication = [
         Key = [ Label = "e-Boekhouden API key", KeyLabel = "Plak je API key" ]
     ],
-    Label = "e-Boekhouden (API)"
+    Label = "Unofficial e-Boekhouden connector (API)"
 ];
 
 // Data Source UI publishing description
  eBoekhouden.Publish = [
     Beta       = true,
     Category   = "Finance",
-    ButtonText = { Extension.LoadString("ButtonTitle"), Extension.LoadString("ButtonHelp") },
-    LearnMoreUrl      = "https://powerbi.microsoft.com/",
+    ButtonText = { "Unofficial e-Boekhouden", "Load data from e-Boekhouden using the unofficial API connector." },
+    LearnMoreUrl      = "https://github.com/TimAngevare/eBoekhouden-PowerBI-connector",
     SourceImage       = eBoekhouden.Icons,
     SourceTypeImage   = eBoekhouden.Icons
 ];
