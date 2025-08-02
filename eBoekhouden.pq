@@ -94,9 +94,8 @@ shared eBoekhouden.getInvoices = (offset as number, limit as number) =>
     let
         tbl = eBoekhouden.retrieveItems("/v1/invoice", offset, limit),
         result = Table.TransformColumnTypes(tbl, {
-            {"date", type date}, {"id", Int64.Type}, {"type", Int64.Type},
-            {"invoiceNumber", type text}, {"ledgerId", Int64.Type}, {"amount", Currency.Type},
-            {"entryNumber", type text}
+            {"date", type date}, {"id", Int64.Type},
+            {"invoiceNumber", type text}, {"totalAmount", Currency.Type}, {"relationId", Int64.Type}, {"vatAmount", Currency.Type}
         })
     in
         result;
