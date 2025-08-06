@@ -2,6 +2,13 @@
 [Version = "1.0.0"]
 section eBoekhouden;
 
+// global API settings
+shared _Api = [
+    Root    = "https://api.e-boekhouden.nl",
+    Version = "v1",
+    Source  = "PowerBI"
+];
+
 [DataSource.Kind="eBoekhouden", Publish="eBoekhouden.Publish"]
 shared eBoekhouden.Contents = () =>
     let
@@ -36,9 +43,10 @@ shared eBoekhouden.Contents = () =>
     in
         navigation;
 
+
 shared eBoekhouden.getSession = () =>
     let
-        url = "https://api.e-boekhouden.nl/v1/session",
+        url = _Api[Root] & "/" & _Api[Version] & "/session",
         apiKey = try Extension.CurrentCredential()[Key] otherwise error "No API key provided",
         jsonBody = Json.FromValue([ accessToken = apiKey, source = "powerBI" ]),
         options = [
@@ -64,7 +72,7 @@ shared eBoekhouden.getSession = () =>
  eBoekhouden.AuthRequest = (relativePath as text, optional query as nullable record) =>
     let
         token = eBoekhouden.getSession(),
-        url   = "https://api.e-boekhouden.nl" & relativePath,
+        url = _Api[Root] & "/" & _Api[Version] & relativePath,
         options = [
             Headers = [
                 #"Content-Type"  = "application/json",
@@ -76,6 +84,7 @@ shared eBoekhouden.getSession = () =>
         result = Web.Contents(url, options)
     in
         result;
+
 
 // Retrieve paged items endpoint
 eBoekhouden.retrieveItems = (relativePath as text, offset as number, limit as number) =>
@@ -90,9 +99,9 @@ eBoekhouden.retrieveItems = (relativePath as text, offset as number, limit as nu
         sorted;
 
 // Exposed functions returning tables
-shared eBoekhouden.getInvoices = (offset as number, limit as number) =>
+shared eBoekhouden.getInvoices = (optional offset as number,optional limit as number) =>
     let
-        tbl = eBoekhouden.retrieveItems("/v1/invoice", offset, limit),
+        tbl = eBoekhouden.retrieveItems("/invoice", offset ?? 0, limit ?? 500),
         result = Table.TransformColumnTypes(tbl, {
             {"date", type date}, {"id", Int64.Type},
             {"invoiceNumber", type text}, {"totalAmount", Currency.Type}, {"relationId", Int64.Type}, {"vatAmount", Currency.Type}
@@ -102,13 +111,13 @@ shared eBoekhouden.getInvoices = (offset as number, limit as number) =>
 
 shared eBoekhouden.getInvoice = (id as number) =>
     let
-        raw = eBoekhouden.AuthRequest("/v1/invoice/" & Text.From(id))
+        raw = eBoekhouden.AuthRequest("/invoice/" & Text.From(id))
     in
         raw;
 
-shared eBoekhouden.getMutations = (offset as number, limit as number) =>
+shared eBoekhouden.getMutations = (optional offset as number,optional limit as number) =>
     let
-        tbl = eBoekhouden.retrieveItems("/v1/mutation", offset, limit),
+        tbl = eBoekhouden.retrieveItems("/mutation", offset ?? 0, limit ?? 500),
         result = Table.TransformColumnTypes(tbl, {
             {"date", type date}, {"id", Int64.Type}, {"type", Int64.Type},
             {"invoiceNumber", type text}, {"ledgerId", Int64.Type}, {"amount", Currency.Type},
@@ -119,7 +128,7 @@ shared eBoekhouden.getMutations = (offset as number, limit as number) =>
 
 shared eBoekhouden.getLedgers = () =>
     let
-        raw     = Json.Document(eBoekhouden.AuthRequest("/v1/ledger")),
+        raw     = Json.Document(eBoekhouden.AuthRequest("/ledger")),
         records = raw[items],
         tbl     = Table.FromRecords(records),
         changed = Table.TransformColumnTypes(tbl, {{"id", Int64.Type}, {"code", Int64.Type}}),
@@ -141,7 +150,7 @@ eBoekhouden.lastMonths = () =>
 
 shared eBoekhouden.GetLedgerBalance = (id as text, startDate as text, endDate as text) =>
     let
-        raw = eBoekhouden.AuthRequest("/v1/ledger/" & id & "/balance?from=" & startDate & "&to=" & endDate),
+        raw = eBoekhouden.AuthRequest("/ledger/" & id & "/balance?from=" & startDate & "&to=" & endDate),
         response = Json.Document(raw)
     in
         response;
@@ -189,7 +198,7 @@ shared eBoekhouden.getLedgerBalances = () =>
 
 shared eBoekhouden.getOutstandingInvoicesCreditor = () =>
     let
-        raw      = Json.Document(eBoekhouden.AuthRequest("/v1/mutation/invoice/outstanding?credDeb=c")),
+        raw      = Json.Document(eBoekhouden.AuthRequest("/mutation/invoice/outstanding?credDeb=c")),
         records  = raw[items],
         table    = Table.FromRecords(records),
         result   = Table.TransformColumnTypes(table, {
@@ -201,7 +210,7 @@ shared eBoekhouden.getOutstandingInvoicesCreditor = () =>
 
 shared eBoekhouden.getOutstandingInvoicesDebtor = () =>
     let
-        raw      = Json.Document(eBoekhouden.AuthRequest("/v1/mutation/invoice/outstanding?credDeb=d")),
+        raw      = Json.Document(eBoekhouden.AuthRequest("/mutation/invoice/outstanding?credDeb=d")),
         records  = raw[items],
         table    = Table.FromRecords(records),
         result   = Table.TransformColumnTypes(table, {
@@ -213,7 +222,7 @@ shared eBoekhouden.getOutstandingInvoicesDebtor = () =>
 
 shared eBoekhouden.getAdministration = () =>
     let
-        result = Json.Document(eBoekhouden.AuthRequest("/v1/administration")),
+        result = Json.Document(eBoekhouden.AuthRequest("/administration")),
         output =
             if result[HasError] then
                 let
@@ -236,7 +245,7 @@ shared eBoekhouden.getAdministration = () =>
 
 shared eBoekhouden.getInvoiceTemplate = () =>
     let
-        raw = Json.Document(eBoekhouden.AuthRequest("/v1/invoiceTemplate")),
+        raw = Json.Document(eBoekhouden.AuthRequest("/invoiceTemplate")),
         records  = raw[items],
         table    = Table.FromRecords(records)
     in
@@ -244,7 +253,7 @@ shared eBoekhouden.getInvoiceTemplate = () =>
 
 shared eBoekhouden.getRelations = () =>
     let
-        raw = Json.Document(eBoekhouden.AuthRequest("/v1/relation")),
+        raw = Json.Document(eBoekhouden.AuthRequest("/relation")),
         records  = raw[items],
         table    = Table.FromRecords(records)
     in
@@ -252,7 +261,7 @@ shared eBoekhouden.getRelations = () =>
 
 shared eBoekhouden.getRelation = (id as number) =>
     let
-        raw = Json.Document(eBoekhouden.AuthRequest("/v1/relation/" & Text.From(id))),
+        raw = Json.Document(eBoekhouden.AuthRequest("/relation/" & Text.From(id))),
         records  = raw[items],
         table    = Table.FromRecords(records)
     in
@@ -260,7 +269,7 @@ shared eBoekhouden.getRelation = (id as number) =>
 
 shared eBoekhouden.getProducts = () =>
     let
-        raw = Json.Document(eBoekhouden.AuthRequest("/v1/product")),
+        raw = Json.Document(eBoekhouden.AuthRequest("/product")),
         records  = raw[items],
         table    = Table.FromRecords(records)
     in
@@ -268,7 +277,7 @@ shared eBoekhouden.getProducts = () =>
 
 shared eBoekhouden.getProduct = (id as number) =>
     let
-        raw = Json.Document(eBoekhouden.AuthRequest("/v1/product/" & Text.From(id))),
+        raw = Json.Document(eBoekhouden.AuthRequest("/product/" & Text.From(id))),
         records  = raw[items],
         table    = Table.FromRecords(records)
     in
