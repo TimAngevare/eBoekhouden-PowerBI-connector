@@ -85,7 +85,7 @@ Wil je bijdragen aan ontwikkeling?
 
 ## 📄 Licentie
 
-Deze connector valt onder de **MIT-licentie**. Gebruik is op eigen risico. Raadpleeg de [officiële e‑Boekhouden API-documentatie](https://api.e-boekhouden.nl).
+Deze connector valt onder de **MIT-licentie**. Gebruik is op eigen risico. Raadpleeg de [officiële e‑Boekhouden API-documentatie](https://api.e-boekhouden.nl/swagger/index.html).
 
 ---
 
